@@ -8,6 +8,13 @@
 #import "STViewController.h"
 
 
+static CGSize CGSizeScale(CGSize size, CGFloat scale) {
+	size.width *= scale;
+	size.height *= scale;
+	return size;
+}
+
+
 @interface STViewController ()
 @property (nonatomic,strong,readonly) UIImageView *imageViewNonretinaRaw;
 @property (nonatomic,strong,readonly) UIImageView *imageViewRetinaRaw;
@@ -127,7 +134,63 @@
 	NSString * const imagePath = [[NSBundle mainBundle] pathForResource:@"testcase" ofType:@"png"];
 
 	{
-		UIImage * const nonretinaImage = [UIImage imageWithContentsOfFile:imagePath];
+		NSDate *start = [NSDate date];
+		UIImage *nonretinaImage = nil;
+		NSUInteger const nIterations = 10000;
+		for (NSUInteger i = 0; i < nIterations; ++i) {
+			nonretinaImage = ({
+				UIImage *image = nil;
+				CGFloat scale = [[UIScreen mainScreen] scale];
+				if (scale > 1) {;
+					CGDataProviderRef cgimageDataProvider = CGDataProviderCreateWithFilename([imagePath fileSystemRepresentation]);
+					CGImageRef cgimage = CGImageCreateWithPNGDataProvider(cgimageDataProvider, NULL, NO, kCGRenderingIntentDefault);
+					CFRelease(cgimageDataProvider);
+					image = [[UIImage alloc] initWithCGImage:cgimage scale:2 orientation:UIImageOrientationUp];
+					CFRelease(cgimage);
+				} else if (1) {
+					CGDataProviderRef cgimageDataProvider = CGDataProviderCreateWithCFData((__bridge CFDataRef)[NSData dataWithContentsOfFile:imagePath options:NSDataReadingMappedIfSafe error:NULL]);
+					CGImageRef cgimage = CGImageCreateWithPNGDataProvider(cgimageDataProvider, NULL, NO, kCGRenderingIntentDefault);
+					CFRelease(cgimageDataProvider);
+					CGSize const cgimageSize = (CGSize){ .width = CGImageGetWidth(cgimage), .height = CGImageGetHeight(cgimage) };
+					CGSize const contextSize = CGSizeScale(cgimageSize, .5);
+					UIGraphicsBeginImageContextWithOptions(contextSize, NO, 0);
+					CGContextRef ctx = UIGraphicsGetCurrentContext();
+					CGContextConcatCTM(ctx, (CGAffineTransform){ .a = 1, .d = -1, .ty = contextSize.height });
+					CGContextSetInterpolationQuality(ctx, kCGInterpolationLow);
+					CGContextDrawImage(ctx, (CGRect){ .size = contextSize }, cgimage);
+					image = UIGraphicsGetImageFromCurrentImageContext();
+					UIGraphicsEndImageContext();
+					CFRelease(cgimage);
+				} else if (1) {
+					CGDataProviderRef cgimageDataProvider = CGDataProviderCreateWithCFData((__bridge CFDataRef)[NSData dataWithContentsOfFile:imagePath options:NSDataReadingMappedIfSafe error:NULL]);
+					CGImageRef cgimage = CGImageCreateWithPNGDataProvider(cgimageDataProvider, NULL, NO, kCGRenderingIntentDefault);
+					CFRelease(cgimageDataProvider);
+					CGSize const cgimageSize = (CGSize){ .width = CGImageGetWidth(cgimage), .height = CGImageGetHeight(cgimage) };
+					CGColorSpaceRef colorspace = CGColorSpaceCreateDeviceRGB();
+					CGSize const contextSize = CGSizeScale(cgimageSize, .5);
+					CGContextRef ctx = CGBitmapContextCreate(NULL, contextSize.width, contextSize.height, 8, contextSize.width*4, colorspace, kCGImageAlphaPremultipliedLast);
+					CFRelease(colorspace);
+					CGContextSetInterpolationQuality(ctx, kCGInterpolationLow);
+					CGContextDrawImage(ctx, (CGRect){ .size = contextSize }, cgimage);
+					CFRelease(cgimage);
+					cgimage = CGBitmapContextCreateImage(ctx);
+					CGContextRelease(ctx);
+					image = [UIImage imageWithCGImage:cgimage scale:1 orientation:UIImageOrientationUp];
+					CFRelease(cgimage);
+				} else {
+					UIImage *tmp = [UIImage imageWithContentsOfFile:imagePath];
+					CGSize const contextSize = CGSizeScale(tmp.size, .5);
+					UIGraphicsBeginImageContextWithOptions(contextSize, NO, 0);
+					[tmp drawInRect:(CGRect){ .size = contextSize }];
+					image = UIGraphicsGetImageFromCurrentImageContext();
+					UIGraphicsEndImageContext();
+				}
+				image;
+			});
+		}
+		NSDate *end = [NSDate date];
+		NSTimeInterval duration = [end timeIntervalSinceDate:start];
+		NSLog(@"duration: %f (%g)", duration, duration / nIterations);
 
 		_imageViewNonretinaRaw.image = nonretinaImage;
 		_imageViewNonretinaScaleAspectFit.image = nonretinaImage;
@@ -138,7 +201,7 @@
 	{
 		UIImage * const retinaImage = ({
 			CGDataProviderRef cgimageDataProvider = CGDataProviderCreateWithFilename([imagePath fileSystemRepresentation]);
-			CGImageRef cgimage = CGImageCreateWithPNGDataProvider(cgimageDataProvider, NULL, YES, kCGRenderingIntentDefault);
+			CGImageRef cgimage = CGImageCreateWithPNGDataProvider(cgimageDataProvider, NULL, NO, kCGRenderingIntentDefault);
 			CFRelease(cgimageDataProvider);
 			UIImage * const image = [[UIImage alloc] initWithCGImage:cgimage scale:2 orientation:UIImageOrientationUp];
 			CFRelease(cgimage);
